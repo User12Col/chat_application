@@ -4,13 +4,14 @@ import 'package:chat_app/widgets/avatar.dart';
 import 'package:chat_app/widgets/glowing_action_button.dart';
 import 'package:chat_app/widgets/icon_button.dart';
 import 'package:flutter/material.dart';
+import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 
 class ChatScreen extends StatelessWidget {
-  final MessageData messageData;
-  const ChatScreen({Key? key, required this.messageData}) : super(key: key);
+  final Channel channel;
+  const ChatScreen({Key? key, required this.channel}) : super(key: key);
 
-  static Route route(MessageData data) =>
-      MaterialPageRoute(builder: (context) => ChatScreen(messageData: data));
+  static Route routeWithChannel(Channel channel) =>
+      MaterialPageRoute(builder: (context) => StreamChannel(child: ChatScreen(channel: channel), channel: channel));
 
   @override
   Widget build(BuildContext context) {
@@ -30,9 +31,9 @@ class ChatScreen extends StatelessWidget {
             },
           ),
         ),
-        title: _AppBarTitle(
-          messageData: messageData,
-        ),
+        // title: _AppBarTitle(
+        //   messageData: messageData,
+        // ),
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),

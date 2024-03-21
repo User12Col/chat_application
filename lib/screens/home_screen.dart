@@ -1,8 +1,10 @@
+import 'package:chat_app/app.dart';
 import 'package:chat_app/helpers.dart';
 import 'package:chat_app/pages/call_page.dart';
 import 'package:chat_app/pages/contact_page.dart';
 import 'package:chat_app/pages/message_page.dart';
 import 'package:chat_app/pages/notification_page.dart';
+import 'package:chat_app/screens/profile_screen.dart';
 import 'package:chat_app/theme.dart';
 import 'package:chat_app/widgets/avatar.dart';
 import 'package:chat_app/widgets/glowing_action_button.dart';
@@ -47,7 +49,15 @@ class HomeScreen extends StatelessWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Avatar.small(url: Helpers.randomPictureUrl()),
+            child: Hero(
+              tag: 'hero-profile-picture',
+              child: Avatar.small(
+                url: context.currentUserImage,
+                onTap: () {
+                  Navigator.of(context).push(ProfileScreen.route);
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -113,7 +123,21 @@ class _bottomNavigationBarState extends State<_bottomNavigationBar> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: GlowingActionButton(color: AppColors.secondary, icon: Icons.add, onPressed: (){}),
+                child: GlowingActionButton(
+                  color: AppColors.secondary,
+                  icon: Icons.add,
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => Dialog(
+                        child: AspectRatio(
+                          aspectRatio: 8 / 7,
+                          child: ContactPage(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
               _navigationBarItem(
                 label: 'Call',

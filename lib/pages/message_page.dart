@@ -1,12 +1,15 @@
+import 'package:chat_app/app.dart';
 import 'package:chat_app/helpers.dart';
 import 'package:chat_app/models/message_data.dart';
 import 'package:chat_app/models/story_data.dart';
 import 'package:chat_app/screens/chat_screen.dart';
 import 'package:chat_app/theme.dart';
 import 'package:chat_app/widgets/avatar.dart';
+import 'package:chat_app/widgets/display_error_message.dart';
 import 'package:faker/faker.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
+import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 
 class MessagePage extends StatefulWidget {
   const MessagePage({Key? key}) : super(key: key);
@@ -16,61 +19,163 @@ class MessagePage extends StatefulWidget {
 }
 
 class _MessagePageState extends State<MessagePage> {
+  late final channelListController = StreamChannelListController(
+    client: StreamChatCore.of(context).client,
+    filter: Filter.and(
+      [
+        Filter.equal('type', 'messaging'),
+        Filter.in_('members', [
+          StreamChatCore.of(context).currentUser!.id,
+        ])
+      ],
+    ),
+  );
+
+  @override
+  void initState() {
+    channelListController.doInitialLoad();
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    channelListController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        const SliverToBoxAdapter(child: _Stories()),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final faker = Faker();
-              return _MessageTitle(
-                messageData: MessageData(
-                    senderName: faker.person.name(),
-                    message: faker.lorem.sentence(),
-                    dateTime: Helpers.randomDate(),
-                    profilePic: Helpers.randomPictureUrl(),
-                    dateMessage:
-                        Jiffy.parse(Helpers.randomDate().toString()).yMMMd),
+    return PagedValueListenableBuilder<int, Channel>(
+      valueListenable: channelListController,
+      builder: (context, value, child) {
+        return value.when(
+          (channels, nextPageKey, error) {
+            if (channels.isEmpty) {
+              return const Center(
+                child: Text(
+                  'So empty.\nGo and message someone.',
+                  textAlign: TextAlign.center,
+                ),
               );
-            },
+            }
+            return LazyLoadScrollView(
+              onEndOfPage: () async {
+                if (nextPageKey != null) {
+                  channelListController.loadMore(nextPageKey);
+                }
+              },
+              child: CustomScrollView(
+                slivers: [
+                  const SliverToBoxAdapter(
+                    child: _Stories(),
+                  ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        return _MessageTitle(channel: channels[index]);
+                      },
+                      childCount: channels.length,
+                    ),
+                  )
+                ],
+              ),
+            );
+          },
+          loading: () => Center(
+            child: SizedBox(
+              height: 50,
+              width: 50,
+              child: CircularProgressIndicator(),
+            ),
           ),
-        ),
-      ],
+          error: (e) => DisplayErrorMessage(
+            error: e,
+          ),
+        );
+      },
     );
   }
 }
 
 class _MessageTitle extends StatelessWidget {
-  final MessageData messageData;
+  final Channel channel;
 
-  const _MessageTitle({Key? key, required this.messageData}) : super(key: key);
+  const _MessageTitle({Key? key, required this.channel}) : super(key: key);
+
+  Widget _buildLastMessage(){
+    return BetterStreamBuilder<Message>(
+      stream: channel.state!.lastMessageStream,
+      initialData: channel.state!.lastMessage,
+      builder: (context, lastMessage){
+        return Text(
+          lastMessage.text ?? '',
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, color: AppColors.textFaded),
+        );
+      },
+    );
+  }
+
+  Widget _buildLastMessageAt() {
+    return BetterStreamBuilder<DateTime>(
+      stream: channel.lastMessageAtStream,
+      initialData: channel.lastMessageAt,
+      builder: (context, data) {
+        final lastMessageAt = data.toLocal();
+        String stringDate;
+        final now = DateTime.now();
+
+        final startOfDay = DateTime(now.year, now.month, now.day);
+
+        if (lastMessageAt.millisecondsSinceEpoch >=
+            startOfDay.millisecondsSinceEpoch) {
+
+          stringDate = Jiffy.parse(lastMessageAt.toLocal().toString()).jm;
+        } else if (lastMessageAt.millisecondsSinceEpoch >=
+            startOfDay
+                .subtract(const Duration(days: 1))
+                .millisecondsSinceEpoch) {
+          stringDate = 'YESTERDAY';
+        } else if (startOfDay.difference(lastMessageAt).inDays < 7) {
+          stringDate = Jiffy.parse(lastMessageAt.toLocal().toString()).EEEE;
+        } else {
+          stringDate = Jiffy.parse(lastMessageAt.toLocal().toString()).yMd;
+        }
+        return Text(
+          stringDate,
+          style: const TextStyle(
+            fontSize: 11,
+            letterSpacing: -0.2,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textFaded,
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: (){
-        Navigator.of(context).push(ChatScreen.route(messageData));
+      onTap: () {
+        Navigator.of(context).push(ChatScreen.routeWithChannel(channel));
       },
       child: Container(
         height: 100,
         margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: Colors.grey,
-              width: 0.2,
-            )
-          )
-        ),
+            border: Border(
+                bottom: BorderSide(
+          color: Colors.grey,
+          width: 0.2,
+        ))),
         child: Padding(
           padding: const EdgeInsets.all(4.0),
           child: Row(
             children: [
               Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Avatar.medium(url: messageData.profilePic),
+                child: Avatar.medium(url: Helpers.getChannelImage(channel, context.currentUser!)),
               ),
               Expanded(
                 child: Column(
@@ -78,16 +183,14 @@ class _MessageTitle extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      messageData.senderName,
+                      Helpers.getChannelName(channel, context.currentUser!),
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                     SizedBox(
                       height: 20,
-                      child: Text(
-                        messageData.message,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: _buildLastMessage(),
                     ),
                   ],
                 ),
@@ -101,14 +204,7 @@ class _MessageTitle extends StatelessWidget {
                     const SizedBox(
                       height: 4,
                     ),
-                    Text(
-                      messageData.dateMessage,
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: -0.2,
-                        color: AppColors.textFaded,
-                      ),
-                    ),
+                    _buildLastMessageAt(),
                     const SizedBox(
                       height: 8,
                     ),

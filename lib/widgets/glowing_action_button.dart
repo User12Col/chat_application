@@ -10,6 +10,7 @@ class GlowingActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
